@@ -14,7 +14,7 @@ function white_ip_check()
         if IP_WHITE_RULE ~= nil then
             for _,rule in pairs(IP_WHITE_RULE) do
                 if rule ~= "" and rulematch(WHITE_IP,rule,"jo") then
-                    log_record('White_IP',ngx.var_request_uri,"_","_")
+                    --log_record('White_IP',ngx.var_request_uri,"_","_")
                     return true
                 end
             end
