@@ -23,13 +23,13 @@ config_cookie_check = "on"
 --enable/disable cc filtering
 config_cc_check = "on"
 --cc rate the xxx of xxx seconds
-config_cc_rate = "60/60"
+config_cc_rate = "30/60"
 --enable/disable post filtering
 config_post_check = "on"
 --config waf output redirect/html
-config_waf_output = "html"
+config_waf_output = "redirect"
 --if config_waf_output ,setting url
-config_waf_redirect_url = "https://403.cloudflare-safety.com"
+config_waf_redirect_url = "https://403.xxx.com"
 config_output_html=[[
 <html>
 <head>
