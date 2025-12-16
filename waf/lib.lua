@@ -3,19 +3,20 @@ require 'config'
 
 --Get the client IP
 function get_client_ip()
-    X_FORWARDED_FOR = ngx.var.http_x_forwarded_for
+    local CLIENT_IP = "unknown"
+    local X_FORWARDED_FOR = ngx.var.http_x_forwarded_for
+
     if X_FORWARDED_FOR then
-        first_ip = string.match(X_FORWARDED_FOR, "^%s*([^%s,]+)")
+        local first_ip = string.match(X_FORWARDED_FOR, "^%s*([^%s,]+)")
         if first_ip then
             CLIENT_IP = first_ip
         end
     end
-    if CLIENT_IP == nil or CLIENT_IP == "" then
-        CLIENT_IP = ngx.var.remote_addr
+
+    if CLIENT_IP == "unknown" or CLIENT_IP == "" then
+        CLIENT_IP = ngx.var.remote_addr or "unknown"
     end
-    if CLIENT_IP == nil then
-        CLIENT_IP  = "unknown"
-    end
+
     return CLIENT_IP
 end
 
