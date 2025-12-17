@@ -33,11 +33,9 @@ local function init_trusted_proxy()
 end
 
 function is_trusted_proxy(ip)
-	-- if not trusted_cidrs then
 	if not trusted_matcher then
 		return false
 	end
-	-- return iputils.ip_in_cidrs(ip, trusted_cidrs)
 	local ok = trusted_matcher:match(ip)
 	return ok == true
 end
@@ -198,9 +196,9 @@ local rules = {
 	"url.rule",
 	"args.rule",
 	"post.rule",
+	"black_country.rule",
+	"white_country.rule",
 }
 for _, name in ipairs(rules) do
 	get_rule(name)
 end
-
-init_trusted_proxy()

@@ -45,6 +45,13 @@ function waf_main()
 	if post_attack_check() then
 		return
 	end
+
+	-- 10. 国家封禁检查
+	-- 如果是黑名单模式可以放最前面以节省资源，先拦截
+	-- 如果是白名单模式，要放在最后（否则白名单国家全部允许了，就不会执行后续其他规则）
+	if country_attack_check() then
+		return
+	end
 end
 
 waf_main()

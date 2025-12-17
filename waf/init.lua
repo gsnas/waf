@@ -19,6 +19,91 @@ if not lim then
 	ngx.log(ngx.ERR, "failed to instantiate limit_req: ", err)
 end
 
+-- GeoIP 国家黑白名单
+local black_countries = nil
+local white_countries = nil
+
+local function init_country_rules()
+	black_countries = nil
+	white_countries = nil
+	if config_black_country_check == "on" then
+		-- 加载并过滤黑名单国家
+		local raw_black = get_rule("black_country.rule") or {}
+		local black_list = {}
+		for _, line in ipairs(raw_black) do
+			line = line:gsub("^%s*(.-)%s*$", "%1"):upper() -- 转大写，统一格式
+			if line ~= "" and not line:match("^%-%-") and not line:match("^#") then
+				black_list[line] = true
+			end
+		end
+		if next(black_list) then
+			black_countries = black_list
+			ngx.log(ngx.INFO, "Country blacklist loaded with ", #black_list, " countries")
+		end
+	end
+
+	if config_white_country_check == "on" then
+		-- 加载并过滤白名单国家
+		local raw_white = get_rule("white_country.rule") or {}
+		local white_list = {}
+		for _, line in ipairs(raw_white) do
+			line = line:gsub("^%s*(.-)%s*$", "%1"):upper()
+			if line ~= "" and not line:match("^%-%-") and not line:match("^#") then
+				white_list[line] = true
+			end
+		end
+		if next(white_list) and not black_countries then
+			white_countries = white_list
+			ngx.log(
+				ngx.INFO,
+				"Country whitelist loaded with ",
+				#white_list,
+				" countries (blacklist empty, using whitelist mode)"
+			)
+		elseif next(white_list) and black_countries then
+			ngx.log(ngx.INFO, "Country whitelist ignored because blacklist is active")
+		end
+	end
+end
+
+-- 检查国家是否被拦截
+function country_attack_check()
+	if not black_countries and not white_countries then
+		return false
+	end
+
+	local country = ngx.var.geoip2_data_country_iso_code
+	if not country then
+		return false -- 无法获取国家，保守放行
+	end
+	country = string.upper(country)
+
+	-- 黑名单优先：有黑名单则只检查黑名单
+	if black_countries then
+		if black_countries[country] then
+			log_record("Black_Country", ngx.var.request_uri, country, "-")
+			if config_waf_enable == "on" then
+				waf_output()
+				return true
+			end
+		end
+		return false
+	end
+
+	-- 只有白名单模式：不在白名单中则拦截
+	if white_countries then
+		if not white_countries[country] then
+			log_record("Not_In_White_Country", ngx.var.request_uri, country, "-")
+			if config_waf_enable == "on" then
+				waf_output()
+				return true
+			end
+		end
+	end
+
+	return false
+end
+
 --allow white ip
 function white_ip_check()
 	if config_white_ip_check == "on" then
@@ -225,3 +310,6 @@ function post_attack_check()
 	end
 	return false
 end
+
+init_trusted_proxy()
+init_country_rules()
