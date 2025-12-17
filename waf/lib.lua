@@ -2,29 +2,37 @@
 require("config")
 
 local _rule_cache = {}
--- local ipmatcher = require("resty.ipmatcher")
--- local trusted_matcher = nil
-local iputils = require("resty.iputils")
-local trusted_cidrs = nil
+local ipmatcher = require("resty.ipmatcher")
+local trusted_matcher = nil
+-- local iputils = require("resty.iputils")
+-- local trusted_cidrs = nil
 
 -- 初始化函数（在预加载后调用）
 local function init_trusted_proxy()
 	local trusted_rules = get_rule("trusted_proxy.rule") or {}
 	if #trusted_rules > 0 then
-		local trusted_cidrs = iputils.parse_cidrs(trusted_rules)
-		if not trusted_cidrs then
-			ngx.log(ngx.ERR, "failed to parse trusted proxy CIDRs")
+		-- local trusted_cidrs = iputils.parse_cidrs(trusted_rules)
+		local matcher, err = ipmatcher.new(trusted_rules)
+		-- if not trusted_cidrs then
+		if not matcher then
+			-- ngx.log(ngx.ERR, "failed to parse trusted proxy CIDRs")
+			ngx.log(ngx.ERR, "failed to create trusted proxy matcher: ", err or "unknown")
 		else
-			ngx.log(ngx.INFO, "Trusted proxy CIDRs loaded with ", #trusted_rules, " rules")
+			trusted_matcher = matcher
+			-- ngx.log(ngx.INFO, "Trusted proxy CIDRs loaded with ", #trusted_rules, " rules")
+			ngx.log(ngx.INFO, "Trusted proxy matcher loaded with ", #trusted_rules, " IPv4/IPv6 rules")
 		end
 	end
 end
 
 function is_trusted_proxy(ip)
-	if not trusted_cidrs then
+	-- if not trusted_cidrs then
+	if not trusted_matcher then
 		return false
 	end
-	return iputils.ip_in_cidrs(ip, trusted_cidrs)
+	-- return iputils.ip_in_cidrs(ip, trusted_cidrs)
+	local ok = trusted_matcher:match(ip)
+	return ok == true
 end
 
 --Get WAF rule
