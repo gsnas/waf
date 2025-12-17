@@ -202,3 +202,6 @@ local rules = {
 for _, name in ipairs(rules) do
 	get_rule(name)
 end
+
+init_trusted_proxy()
+init_country_rules()

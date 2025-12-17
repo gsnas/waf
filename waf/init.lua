@@ -310,6 +310,3 @@ function post_attack_check()
 	end
 	return false
 end
-
-init_trusted_proxy()
-init_country_rules()
