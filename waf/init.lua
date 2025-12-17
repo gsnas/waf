@@ -310,3 +310,4 @@ function post_attack_check()
 	end
 	return false
 end
+init_country_rules()
