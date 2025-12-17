@@ -1,4 +1,4 @@
---WAF config file,enable = "on",disable = "off"
+--WAF config file,enable = "on", disable = "off"
 
 --waf status
 config_waf_enable = "on"
@@ -24,22 +24,23 @@ config_cookie_check = "on"
 config_cc_check = "on"
 --cc rate the xxx of xxx seconds
 config_cc_rate = "30/60"
+-- cc burst
+config_cc_burst = 20
 --enable/disable post filtering
-config_post_check = "on"
+config_post_check = "off"
 --config waf output redirect/html
-config_waf_output = "redirect"
+config_waf_output = "html"
 --if config_waf_output ,setting url
 config_waf_redirect_url = "https://403.xxx.com"
-config_output_html=[[
+config_output_html = [[
 <html>
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 <meta http-equiv="Content-Language" content="zh-cn" />
-<title>403</title>
+<title>Deny 403</title>
 </head>
 <body>
 <h1 align="center"> 403
 </body>
 </html>
 ]]
-

@@ -6,6 +6,19 @@ require("lib")
 local rulematch = ngx.re.find
 local unescape = ngx.unescape_uri
 
+-- cc_attack
+local limit_req = require("resty.limit.req")
+local cc_count = tonumber(string.match(config_cc_rate, "(.*)/")) or 30
+local cc_seconds = tonumber(string.match(config_cc_rate, "/(.*)")) or 60
+if cc_count <= 0 or cc_seconds <= 0 then
+	cc_count, cc_seconds = 30, 60
+end
+local cc_rate = cc_count / cc_seconds
+local lim, err = limit_req.new("limit", cc_rate, config_cc_burst)
+if not lim then
+	ngx.log(ngx.ERR, "failed to instantiate limit_req: ", err)
+end
+
 --allow white ip
 function white_ip_check()
 	if config_white_ip_check == "on" then
@@ -32,7 +45,8 @@ function black_ip_check()
 				if rule ~= "" and rulematch(black_ip, rule, "jo") then
 					log_record("BlackList_IP", ngx.var_request_uri, "_", "_")
 					if config_waf_enable == "on" then
-						ngx.exit(403)
+						-- ngx.exit(403)
+						waf_output()
 						return true
 					end
 				end
@@ -58,25 +72,28 @@ end
 
 --deny cc attack
 function cc_attack_check()
-	if config_cc_check == "on" then
-		local attack_uri = ngx.var.uri
-		local cc_token = get_client_ip() .. attack_uri
-		local limit = ngx.shared.limit
-		local cc_count = tonumber(string.match(config_cc_rate, "(.*)/"))
-		local cc_seconds = tonumber(string.match(config_cc_rate, "/(.*)"))
-		local req, _ = limit:get(cc_token)
-		if req then
-			if req > cc_count then
-				log_record("CC_Attack", ngx.var.request_uri, "-", "-")
-				if config_waf_enable == "on" then
-					ngx.exit(403)
-				end
-			else
-				limit:incr(cc_token, 1)
+	if config_cc_check ~= "on" or not lim then
+		return false
+	end
+
+	local key = get_client_ip() .. ngx.var.uri
+	local delay, err = lim:incoming(key, true)
+
+	if not delay then
+		if err == "rejected" then
+			log_record("CC_Attack", ngx.var.request_uri, "-", "-")
+			if config_waf_enable == "on" then
+				-- ngx.exit(403)
+				waf_output()
+				return true
 			end
-		else
-			limit:set(cc_token, 1, cc_seconds)
 		end
+		ngx.log(ngx.ERR, "failed to limit req: ", err)
+		return false
+	end
+
+	if delay >= 0.001 then
+		ngx.sleep(delay)
 	end
 	return false
 end
@@ -105,13 +122,16 @@ end
 function url_attack_check()
 	if config_url_check == "on" then
 		local url_rules = get_rule("url.rule")
+		-- local req_uri = ngx.var.uri
 		local req_uri = ngx.var.request_uri
-		for _, rule in pairs(url_rules) do
-			if rule ~= "" and rulematch(req_uri, rule, "jo") then
-				log_record("Deny_URL", req_uri, "-", rule)
-				if config_waf_enable == "on" then
-					waf_output()
-					return true
+		if url_rules ~= nil then
+			for _, rule in pairs(url_rules) do
+				if rule ~= "" and rulematch(req_uri, rule, "jo") then
+					log_record("Deny_URL", req_uri, "-", rule)
+					if config_waf_enable == "on" then
+						waf_output()
+						return true
+					end
 				end
 			end
 		end

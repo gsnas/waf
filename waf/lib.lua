@@ -2,6 +2,22 @@
 require("config")
 
 local _rule_cache = {}
+local ipmatcher = require("resty.ipmatcher")
+local trusted_matcher = nil
+
+-- 初始化函数（在预加载后调用）
+local function init_trusted_proxy()
+	local trusted_rules = get_rule("trusted_proxy.rule") or {}
+	if #trusted_rules > 0 then
+		local matcher, err = ipmatcher.new(trusted_rules) -- 直接传入 CIDR 字符串数组
+		if not matcher then
+			ngx.log(ngx.ERR, "failed to create trusted proxy matcher: ", err or "unknown")
+		else
+			trusted_matcher = matcher
+			ngx.log(ngx.INFO, "Trusted proxy matcher loaded with ", #trusted_rules, " CIDR rules")
+		end
+	end
+end
 
 --Get WAF rule
 function get_rule(rulefilename)
@@ -28,22 +44,58 @@ function get_rule(rulefilename)
 		end
 	end
 	rule_file:close()
-
 	ngx.log(ngx.INFO, "WAF rule updated: ", rulefilename)
+
 	-- 3. 将读取结果写入缓存
 	_rule_cache[rulefilename] = rule_table
 	return rule_table
 end
 
+function is_trusted_proxy(ip)
+	if not trusted_matcher then
+		return false
+	end
+	local ok, err = trusted_matcher:match(ip)
+	return ok == true
+end
+
 --Get the client IP
 function get_client_ip()
+	-- 优先使用常见 CDN 专用 header
+	local headers = ngx.req.get_headers()
+	local cdn_ips = {
+		"cf-connecting-ip", -- Cloudflare
+		"true-client-ip", -- Akamai
+		"x-real-ip", -- 常见 Nginx 配置
+		"ali-cdn-real-ip", -- 阿里云
+		"tencent-cdn-real-ip", -- 腾讯云
+	}
+	for _, header in ipairs(cdn_ips) do
+		local ip = headers[header]
+		if ip and ip ~= "" then
+			ip = ip:gsub("^%s*(.-)%s*$", "%1")
+			if not is_trusted_proxy(ip) then
+				return ip
+			end
+		end
+	end
 	local client_ip = "unknown"
-	local X_FORWARDED_FOR = ngx.var.http_x_forwarded_for
+	local xff = ngx.var.http_x_forwarded_for
 
-	if X_FORWARDED_FOR then
-		local first_ip = string.match(X_FORWARDED_FOR, "^%s*([^%s,]+)")
-		if first_ip then
-			client_ip = first_ip
+	if xff then
+		-- 从右往左遍历（获取不是信任代理IP的第一个IP）
+		-- 如果用户配置了正向代理，拦截正向代理IP（user_ip, proxy_ip, cf_cdn_ip, haproxy_ip remote_addr）
+		local ips = {}
+		for ip in xff:gmatch("%s*([^,%s]+)") do
+			table.insert(ips, ip)
+		end
+		-- 然后从后往前遍历（最右是最近的代理）
+		for i = #ips, 1, -1 do
+			local ip = ips[i]:gsub("^%s*(.-)%s*$", "%1")
+			if ip ~= "" and not is_trusted_proxy(ip) then
+				client_ip = ip
+				break
+			end
 		end
 	end
 
@@ -62,25 +114,6 @@ function get_user_agent()
 	end
 	return user_agent
 end
-
---Get WAF rule
---[[ function get_rule(rulefilename)
-	local io = require("io")
-	local rule_path = config_rule_dir
-	local rule_file = io.open(rule_path .. "/" .. rulefilename, "r")
-	if rule_file == nil then
-		return
-	end
-	local rule_table = {}
-	for line in rule_file:lines() do
-		line = string.gsub(line, "[\r\n%s]+", "")
-		if line ~= "" then
-			table.insert(rule_table, line)
-		end
-	end
-	rule_file:close()
-	return rule_table
-end ]]
 
 -- 内部使用的异步写文件函数
 local function async_log_write(premature, log_name, log_line)
@@ -118,13 +151,6 @@ function log_record(method, url, data, ruletag)
 	}
 	local log_line = cjson.encode(log_json_obj)
 	local log_name = log_path .. "/" .. ngx.today() .. "_waf.log"
-	--[[ local file = io.open(log_name, "a")
-	if file == nil then
-		return
-	end
-	file:write(log_line .. "\n")
-	--file:flush()
-	file:close() ]]
 
 	-- 使用 ngx.timer.at 开启异步任务
 	-- 0 表示立即在后台执行
@@ -150,13 +176,16 @@ end
 local rules = {
 	"whiteip.rule",
 	"blackip.rule",
+	"trusted_proxy.rule",
 	"whiteurl.rule",
 	"useragent.rule",
 	"cookie.rule",
 	"url.rule",
 	"args.rule",
-	--"post.rule",
+	"post.rule",
 }
 for _, name in ipairs(rules) do
 	get_rule(name)
 end
+
+init_trusted_proxy()

@@ -42,9 +42,9 @@ function waf_main()
 	end
 
 	-- 9. POST 检查
-	--[[ if post_attack_check() then
+	if post_attack_check() then
 		return
-	end ]]
+	end
 end
 
 waf_main()
