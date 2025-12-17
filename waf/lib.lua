@@ -4,24 +4,31 @@ require("config")
 local _rule_cache = {}
 local ipmatcher = require("resty.ipmatcher")
 local trusted_matcher = nil
--- local iputils = require("resty.iputils")
--- local trusted_cidrs = nil
 
 -- 初始化函数（在预加载后调用）
 local function init_trusted_proxy()
-	local trusted_rules = get_rule("trusted_proxy.rule") or {}
+	local raw_rules = get_rule("trusted_proxy.rule") or {}
+	local trusted_rules = {}
+
+	for _, line in ipairs(raw_rules) do
+		-- 去除前后空格
+		line = line:gsub("^%s*(.-)%s*$", "%1")
+		-- 跳过空行、-- 开头的注释、# 开头的注释
+		if line ~= "" and not line:match("^%-%-") and not line:match("^#") then
+			table.insert(trusted_rules, line)
+		end
+	end
+
 	if #trusted_rules > 0 then
-		-- local trusted_cidrs = iputils.parse_cidrs(trusted_rules)
 		local matcher, err = ipmatcher.new(trusted_rules)
-		-- if not trusted_cidrs then
 		if not matcher then
-			-- ngx.log(ngx.ERR, "failed to parse trusted proxy CIDRs")
 			ngx.log(ngx.ERR, "failed to create trusted proxy matcher: ", err or "unknown")
 		else
 			trusted_matcher = matcher
-			-- ngx.log(ngx.INFO, "Trusted proxy CIDRs loaded with ", #trusted_rules, " rules")
-			ngx.log(ngx.INFO, "Trusted proxy matcher loaded with ", #trusted_rules, " IPv4/IPv6 rules")
+			ngx.log(ngx.INFO, "Trusted proxy matcher loaded with ", #trusted_rules, " valid IPv4/IPv6 rules")
 		end
+	else
+		ngx.log(ngx.WARN, "No valid trusted proxy rules found after filtering comments")
 	end
 end
 
