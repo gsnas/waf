@@ -15,7 +15,7 @@ config_black_ip_check = "on"
 -- enable/disable white country (only effective if black country is off)
 config_white_country_check = "off"
 -- enable/disable black country (takes priority over white)
-config_black_country_check = "off"
+config_black_country_check = "on"
 --enable/disable url filtering
 config_url_check = "on"
 --enalbe/disable url args filtering

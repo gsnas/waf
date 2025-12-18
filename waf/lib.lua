@@ -25,7 +25,7 @@ local function init_trusted_proxy()
 			ngx.log(ngx.ERR, "failed to create trusted proxy matcher: ", err or "unknown")
 		else
 			trusted_matcher = matcher
-			ngx.log(ngx.INFO, "Trusted proxy matcher loaded with ", #trusted_rules, " valid IPv4/IPv6 rules")
+			-- ngx.log(ngx.INFO, "Trusted proxy matcher loaded with ", #trusted_rules, " valid IPv4/IPv6 rules")
 		end
 	else
 		ngx.log(ngx.WARN, "No valid trusted proxy rules found after filtering comments")
@@ -47,6 +47,9 @@ local white_countries = nil
 local function init_country_rules()
 	black_countries = nil
 	white_countries = nil
+	-- local loaded_black = 0
+	-- local loaded_white = 0
+
 	if config_black_country_check == "on" then
 		-- 加载并过滤黑名单国家
 		local raw_black = get_rule("black_country.rule") or {}
@@ -55,11 +58,14 @@ local function init_country_rules()
 			line = line:gsub("^%s*(.-)%s*$", "%1"):upper() -- 转大写，统一格式
 			if line ~= "" and not line:match("^%-%-") and not line:match("^#") then
 				black_list[line] = true
+				-- loaded_black = loaded_black + 1
 			end
 		end
 		if next(black_list) then
 			black_countries = black_list
-			ngx.log(ngx.INFO, "Country blacklist loaded with ", #black_list, " countries")
+			-- ngx.log(ngx.INFO, "Country blacklist loaded with ", loaded_black, " countries")
+		else
+			ngx.log(ngx.WARN, "Black country check enabled but no valid rules found")
 		end
 	end
 
@@ -71,18 +77,21 @@ local function init_country_rules()
 			line = line:gsub("^%s*(.-)%s*$", "%1"):upper()
 			if line ~= "" and not line:match("^%-%-") and not line:match("^#") then
 				white_list[line] = true
+				-- loaded_white = loaded_white + 1
 			end
 		end
 		if next(white_list) and not black_countries then
 			white_countries = white_list
-			ngx.log(
+			--[[ ngx.log(
 				ngx.INFO,
 				"Country whitelist loaded with ",
-				#white_list,
+				loaded_white,
 				" countries (blacklist empty, using whitelist mode)"
 			)
 		elseif next(white_list) and black_countries then
 			ngx.log(ngx.INFO, "Country whitelist ignored because blacklist is active")
+		elseif next(white_list) == nil then
+			ngx.log(ngx.WARN, "White country check enabled but no valid rules found") ]]
 		end
 	end
 end
@@ -93,7 +102,7 @@ function country_attack_check()
 		return false
 	end
 
-	local country = ngx.var.geoip2_data_country_iso_code
+	local country = ngx.var.geoip2_data_country_code
 	if not country then
 		return false -- 无法获取国家，保守放行
 	end
@@ -139,18 +148,19 @@ function get_rule(rulefilename)
 	local rule_file = io.open(file_path, "r")
 
 	if not rule_file then
+		ngx.log(ngx.ERR, "Failed to open rule file: " .. file_path)
 		return nil
 	end
 
 	local rule_table = {}
 	for line in rule_file:lines() do
-		line = string.gsub(line, "[\r\n%s]+", "")
+		line = line:gsub("^%s*(.-)%s*$", "%1")
 		if line ~= "" then
 			table.insert(rule_table, line)
 		end
 	end
 	rule_file:close()
-	ngx.log(ngx.INFO, "WAF rule updated: ", rulefilename)
+	-- ngx.log(ngx.INFO, "WAF rule updated: ", rulefilename)
 
 	-- 3. 将读取结果写入缓存
 	_rule_cache[rulefilename] = rule_table
