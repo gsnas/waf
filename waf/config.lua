@@ -35,16 +35,31 @@ config_post_check = "off"
 --config waf output redirect/html
 config_waf_output = "html"
 --if config_waf_output ,setting url
-config_waf_redirect_url = "https://403.xxx.com"
-config_output_html = [[
+config_waf_redirect_url = "https://waf.xxx.net"
+--[[ config_output_html = [[
 <html>
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 <meta http-equiv="Content-Language" content="zh-cn" />
-<title>Deny 403</title>
+<title>403</title>
 </head>
 <body>
 <h1 align="center"> 403
 </body>
 </html>
+]]
+config_output_html = [[
+    <!DOCTYPE html>
+    <html style="height:100%">
+    <head>
+        <meta charset="utf-8" />
+        <title>403 Forbidden</title>
+    </head>
+    <body style="margin:0; height:100%; overflow:hidden;">
+        <iframe src="https://waf.xxx.net/403.html" 
+                style="width:100%; height:100%; border:none;" 
+                frameborder="0">
+        </iframe>
+    </body>
+    </html>
 ]]
