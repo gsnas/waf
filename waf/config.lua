@@ -26,9 +26,13 @@ config_user_agent_check = "on"
 config_cookie_check = "on"
 --enable/disable cc filtering
 config_cc_check = "on"
---cc rate the xxx of xxx seconds
+-- CC Protection (Leaky Bucket Algorithm):
+-- Average rate: format "requests/time_in_seconds", defines the long-term average allowed request frequency
+-- Example: "30/60" → average 0.5 requests per second (approximately 30 requests in 60 seconds)
 config_cc_rate = "30/60"
--- cc burst
+-- Burst tolerance: maximum number of requests allowed in a short burst
+-- Exceeding this will trigger immediate rate limiting or blocking
+-- Example: 20 → allows up to 20 requests in a sudden burst
 config_cc_burst = 20
 --enable/disable post filtering
 config_post_check = "off"
