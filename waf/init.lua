@@ -200,7 +200,7 @@ function user_agent_attack_check()
 end
 
 --deny post
-function post_attack_check()
+--[[ function post_attack_check()
 	if config_post_check == "on" then
 		local post_rules = get_rule("post.rule")
 		ngx.req.read_body()
@@ -218,6 +218,64 @@ function post_attack_check()
 								return true
 							end
 						end
+					end
+				end
+			end
+		end
+	end
+	return false
+end ]]
+--deny post
+-- 合并后的高性能 POST 检查函数（既查表单字段，又查整条 raw_body）
+function post_attack_check()
+	if config_post_check == "on" then
+		local post_rules = get_rule("post.rule")
+		if not post_rules then
+			return false
+		end
+
+		ngx.req.read_body()
+
+		-- 1. 先尝试获取表单参数进行逐个字段检查
+		local post_args = ngx.req.get_post_args()
+		if post_args and next(post_args) ~= nil then
+			for _, rule in pairs(post_rules) do
+				if rule ~= "" then
+					for key, val in pairs(post_args) do
+						local post_data = type(val) == "table" and table.concat(val, " ") or tostring(val or "")
+						if post_data ~= "" and rulematch(unescape(post_data), rule, "jo") then
+							log_record("Deny_POST_Args", ngx.var.request_uri, "-", rule)
+							if config_waf_enable == "on" then
+								waf_output()
+								return true
+							end
+						end
+					end
+				end
+			end
+		end
+
+		-- 2. 无论表单解析成功与否，再对整条原始 Body (raw_body) 做一次兜底检查
+		local raw_body = ngx.req.get_body_data()
+		if not raw_body then
+			local file = ngx.req.get_body_file()
+			if file then
+				local f = io.open(file, "r")
+				if f then
+					raw_body = f:read("*all")
+					f:close()
+				end
+			end
+		end
+
+		if raw_body and raw_body ~= "" then
+			local unescaped_body = unescape(raw_body)
+			for _, rule in pairs(post_rules) do
+				if rule ~= "" and rulematch(unescaped_body, rule, "jo") then
+					log_record("Deny_POST_Raw_Body", ngx.var.request_uri, "-", rule)
+					if config_waf_enable == "on" then
+						waf_output()
+						return true
 					end
 				end
 			end
