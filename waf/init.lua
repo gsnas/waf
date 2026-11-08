@@ -225,9 +225,10 @@ end
 	end
 	return false
 end ]]
+
 --deny post
 -- 合并后的高性能 POST 检查函数（既查表单字段，又查整条 raw_body）
-function post_attack_check()
+--[[ function post_attack_check()
 	if config_post_check == "on" then
 		local post_rules = get_rule("post.rule")
 		if not post_rules then
@@ -256,6 +257,97 @@ function post_attack_check()
 		end
 
 		-- 2. 无论表单解析成功与否，再对整条原始 Body (raw_body) 做一次兜底检查
+		local raw_body = ngx.req.get_body_data()
+		if not raw_body then
+			local file = ngx.req.get_body_file()
+			if file then
+				local f = io.open(file, "r")
+				if f then
+					raw_body = f:read("*all")
+					f:close()
+				end
+			end
+		end
+
+		if raw_body and raw_body ~= "" then
+			local unescaped_body = unescape(raw_body)
+			for _, rule in pairs(post_rules) do
+				if rule ~= "" and rulematch(unescaped_body, rule, "jo") then
+					log_record("Deny_POST_Raw_Body", ngx.var.request_uri, "-", rule)
+					if config_waf_enable == "on" then
+						waf_output()
+						return true
+					end
+				end
+			end
+		end
+	end
+	return false
+end ]]
+
+-- 优化后的 POST 检查函数（自动豁免文件上传二进制流误报）
+function post_attack_check()
+	if config_post_check == "on" then
+		local post_rules = get_rule("post.rule")
+		if not post_rules then
+			return false
+		end
+
+		ngx.req.read_body()
+
+		-- 1. 获取请求头的 Content-Type，判断是否为文件上传表单 (multipart/form-data)
+		local headers = ngx.req.get_headers()
+		local content_type = headers["content-type"] or ""
+		local is_multipart = string.find(string.lower(content_type), "multipart/form-data", 1, true) ~= nil
+
+		-- 2. 如果是文件上传请求（multipart）
+		if is_multipart then
+			-- 豁免全局 raw_body 扫描，仅对解析出的“文本字段”进行安全检查
+			local post_args = ngx.req.get_post_args()
+			if post_args and next(post_args) ~= nil then
+				for _, rule in pairs(post_rules) do
+					if rule ~= "" then
+						for key, val in pairs(post_args) do
+							-- 关键点：文件在 Lua 里解析出来通常是 table 或者 userdata，而普通文本输入是 string
+							-- 我们只检查 string 类型的文本字段（如 checkVerifc），直接跳过文件二进制流
+							if type(val) == "string" then
+								if rulematch(unescape(val), rule, "jo") then
+									log_record("Deny_Multipart_Field_" .. key, ngx.var.request_uri, "-", rule)
+									if config_waf_enable == "on" then
+										waf_output()
+										return true
+									end
+								end
+							end
+						end
+					end
+				end
+			end
+			-- 如果 multipart 的文本字段安全，直接放行，不再去扫含有图片的 raw_body
+			return false
+		end
+
+		-- 3. 如果不是文件上传（如普通的 application/x-www-form-urlencoded 或 JSON），走常规双重检查
+		-- 先查表单参数
+		local post_args = ngx.req.get_post_args()
+		if post_args and next(post_args) ~= nil then
+			for _, rule in pairs(post_rules) do
+				if rule ~= "" then
+					for key, val in pairs(post_args) do
+						local post_data = type(val) == "table" and table.concat(val, " ") or tostring(val or "")
+						if post_data ~= "" and rulematch(unescape(post_data), rule, "jo") then
+							log_record("Deny_POST_Args", ngx.var.request_uri, "-", rule)
+							if config_waf_enable == "on" then
+								waf_output()
+								return true
+							end
+						end
+					end
+				end
+			end
+		end
+
+		-- 再对普通请求的 raw_body 做兜底检查
 		local raw_body = ngx.req.get_body_data()
 		if not raw_body then
 			local file = ngx.req.get_body_file()
